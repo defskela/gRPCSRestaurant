@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package calculator;
+
+option go_package = "./orderService;order";
+
+service OrderCreater {
+  rpc Create (OrderRequest) returns (OrderResponse);
+}
+
+message OrderRequest {
+  int32 clientID = 1;
+  repeated string dishes = 2;
+}
+
+message OrderResponse {
+  int32 orderID = 1;
+}
