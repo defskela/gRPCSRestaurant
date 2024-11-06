@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package restaurant;
+
+option go_package = "./restaurantService;restaurant";
+
+service ProcessCreater {
+  rpc Create (OrderDetails) returns (OrderStatus);
+  rpc Status (OrderID) returns (OrderStatus);
+}
+
+message OrderID {
+    int32 orderID = 1;
+}
+
+message OrderDetails {
+  int32 orderID = 1;
+  repeated string dishes = 2;
+}
+
+message OrderStatus {
+  int32 orderID = 1;
+  string status = 2;  // "In Progress", "Completed", etc.
+}
