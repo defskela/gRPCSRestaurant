@@ -7,13 +7,24 @@ import (
 	gRPCRestaurant "gRPCProcessingServer/restaurantService"
 	"log"
 	"net"
+	"os"
 	"time"
 
+	"github.com/joho/godotenv"
+	"github.com/lib/pq"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
-// Функция для создания клиента и подключения к RestaurantService
+var db *gorm.DB
+
+type OrderDetails struct {
+	ID     uint           `gorm:"primaryKey"`
+	Dishes pq.StringArray `gorm:"type:text[]"`
+}
+
 func connectToRestaurantService() (gRPCRestaurant.ProcessCreaterClient, *grpc.ClientConn) {
 	conn, err := grpc.NewClient("localhost:50052", grpc.WithInsecure())
 	if err != nil {
@@ -24,27 +35,33 @@ func connectToRestaurantService() (gRPCRestaurant.ProcessCreaterClient, *grpc.Cl
 	return client, conn
 }
 
-// Реализация сервера, которая соответствует интерфейсу OrderCreaterServer
 type server struct {
 	gRPCOrder.UnimplementedOrderCreaterServer
 }
 
-// Реализация метода Create
 func (s *server) Create(ctx context.Context, req *gRPCOrder.OrderRequest) (*gRPCOrder.OrderResponse, error) {
 	for _, elem := range req.Dishes {
 		fmt.Println(elem)
 	}
-	// Создаем клиента для второго микросервиса (RestaurantService)
+
+	orderDetails := &OrderDetails{
+		Dishes: req.Dishes,
+	}
+
+	if err := db.Create(&orderDetails).Error; err != nil {
+		log.Fatalf("Ошибка при сохранении заказа в базу данных: %v", err)
+	}
+
+	fmt.Printf("Присвоенный ID: %d\n", orderDetails.ID)
+
 	restaurantClient, conn := connectToRestaurantService()
 	defer conn.Close()
 
-	// Формируем запрос к RestaurantService
 	restaurantReq := &gRPCRestaurant.OrderDetails{
-		OrderID: 1,
+		OrderID: int32(orderDetails.ID),
 		Dishes:  req.Dishes,
 	}
 
-	// Отправляем запрос
 	ctxRestaurant, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
@@ -55,7 +72,7 @@ func (s *server) Create(ctx context.Context, req *gRPCOrder.OrderRequest) (*gRPC
 
 	log.Printf("Получен статус от RestaurantService: %s", response.Status)
 
-	return &gRPCOrder.OrderResponse{OrderID: 1}, nil
+	return &gRPCOrder.OrderResponse{OrderID: int32(orderDetails.ID)}, nil
 }
 
 func main() {
@@ -64,14 +81,27 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	// Создаем новый gRPC-сервер
+	if err := godotenv.Load(); err != nil {
+		log.Fatalf("Ошибка загрузки файла .env: %v", err)
+	}
+
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Shanghai",
+		os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
+	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("Не удалось подключиться к базе данных: %v", err)
+	}
+
+	if err := db.AutoMigrate(&OrderDetails{}); err != nil {
+		log.Fatalf("Не удалось выполнить миграцию: %v", err)
+	}
+
 	grpcServer := grpc.NewServer()
 
-	// Регистрируем наш Calculator-сервис на gRPC-сервере
 	gRPCOrder.RegisterOrderCreaterServer(grpcServer, &server{})
 	reflection.Register(grpcServer)
 	log.Println("gRPC сервер запущен на порту :50051")
-	// Запускаем сервер
+
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
