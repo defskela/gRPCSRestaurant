@@ -6,6 +6,15 @@ option go_package = "./orderService;order";
 
 service OrderCreater {
   rpc Create (OrderRequest) returns (OrderResponse);
+  rpc Status (OrderID) returns (OrderStatus);
+}
+
+message OrderID {
+    int32 OrderID = 1;
+}
+
+message OrderStatus {
+    string Status = 1;
 }
 
 message OrderRequest {

@@ -75,6 +75,22 @@ func (s *server) Create(ctx context.Context, req *gRPCOrder.OrderRequest) (*gRPC
 	return &gRPCOrder.OrderResponse{OrderID: int32(orderDetails.ID)}, nil
 }
 
+func (s *server) Status(ctx context.Context, req *gRPCOrder.OrderID) (*gRPCOrder.OrderStatus, error) {
+	restaurantClient, conn := connectToRestaurantService()
+	defer conn.Close()
+
+	orderID := &gRPCRestaurant.OrderID{OrderID: req.OrderID}
+	ctxRestaurant, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	response, err := restaurantClient.Status(ctxRestaurant, orderID)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при получении статуса заказа")
+	}
+
+	return &gRPCOrder.OrderStatus{Status: response.Status}, nil
+}
+
 func main() {
 	lis, err := net.Listen("tcp", ":50051")
 	if err != nil {

@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	OrderCreater_Create_FullMethodName = "/calculator.OrderCreater/Create"
+	OrderCreater_Status_FullMethodName = "/calculator.OrderCreater/Status"
 )
 
 // OrderCreaterClient is the client API for OrderCreater service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OrderCreaterClient interface {
 	Create(ctx context.Context, in *OrderRequest, opts ...grpc.CallOption) (*OrderResponse, error)
+	Status(ctx context.Context, in *OrderID, opts ...grpc.CallOption) (*OrderStatus, error)
 }
 
 type orderCreaterClient struct {
@@ -47,11 +49,22 @@ func (c *orderCreaterClient) Create(ctx context.Context, in *OrderRequest, opts 
 	return out, nil
 }
 
+func (c *orderCreaterClient) Status(ctx context.Context, in *OrderID, opts ...grpc.CallOption) (*OrderStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OrderStatus)
+	err := c.cc.Invoke(ctx, OrderCreater_Status_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrderCreaterServer is the server API for OrderCreater service.
 // All implementations must embed UnimplementedOrderCreaterServer
 // for forward compatibility.
 type OrderCreaterServer interface {
 	Create(context.Context, *OrderRequest) (*OrderResponse, error)
+	Status(context.Context, *OrderID) (*OrderStatus, error)
 	mustEmbedUnimplementedOrderCreaterServer()
 }
 
@@ -64,6 +77,9 @@ type UnimplementedOrderCreaterServer struct{}
 
 func (UnimplementedOrderCreaterServer) Create(context.Context, *OrderRequest) (*OrderResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Create not implemented")
+}
+func (UnimplementedOrderCreaterServer) Status(context.Context, *OrderID) (*OrderStatus, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Status not implemented")
 }
 func (UnimplementedOrderCreaterServer) mustEmbedUnimplementedOrderCreaterServer() {}
 func (UnimplementedOrderCreaterServer) testEmbeddedByValue()                      {}
@@ -104,6 +120,24 @@ func _OrderCreater_Create_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrderCreater_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OrderID)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderCreaterServer).Status(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrderCreater_Status_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderCreaterServer).Status(ctx, req.(*OrderID))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OrderCreater_ServiceDesc is the grpc.ServiceDesc for OrderCreater service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +148,10 @@ var OrderCreater_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Create",
 			Handler:    _OrderCreater_Create_Handler,
+		},
+		{
+			MethodName: "Status",
+			Handler:    _OrderCreater_Status_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
