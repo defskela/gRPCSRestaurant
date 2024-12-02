@@ -5,8 +5,10 @@ import (
 	"fmt"
 	gRPCRestaurant "gRPCProcessingServer/restaurantService"
 	"log"
+	"math/rand/v2"
 	"net"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
@@ -16,8 +18,8 @@ import (
 )
 
 var db *gorm.DB
+var orderChannel chan *OrderStatus
 
-// Реализация сервера, которая соответствует интерфейсу OrderCreaterServer
 type server struct {
 	gRPCRestaurant.UnimplementedProcessCreaterServer
 }
@@ -27,12 +29,33 @@ type OrderStatus struct {
 	Status string
 }
 
-// Реализация метода Create
-func (s *server) Create(ctx context.Context, req *gRPCRestaurant.OrderDetails) (*gRPCRestaurant.OrderStatus, error) {
-	fmt.Printf("Заказ с id %d получен, список блюд:\n", req.OrderID)
-	for _, elem := range req.Dishes {
-		fmt.Println(elem)
+func worker(id int, orders <-chan *OrderStatus) {
+	for order := range orders {
+		log.Printf("Worker %d начал обработку заказа %d", id, order.ID)
+		order.work()
+		log.Printf("Worker %d завершил обработку заказа %d", id, order.ID)
 	}
+}
+
+func (order *OrderStatus) work() {
+	time.Sleep(time.Duration(rand.IntN(3)+5) * time.Second)
+	order.Status = "Готовится"
+	if err := db.Save(order).Error; err != nil {
+		log.Printf("Ошибка при обновлении статуса заказа: %v", err)
+	}
+	log.Printf("Статус заказа %d изменен на 'Готовится'", order.ID)
+
+	time.Sleep(time.Duration(rand.IntN(7)+7) * time.Second)
+	order.Status = "Готов к выдаче"
+	if err := db.Save(order).Error; err != nil {
+		log.Printf("Ошибка при обновлении статуса заказа: %v", err)
+	}
+	log.Printf("Статус заказа %d изменен на 'Завершен'", order.ID)
+
+}
+
+func (s *server) Create(ctx context.Context, req *gRPCRestaurant.OrderDetails) (*gRPCRestaurant.OrderStatus, error) {
+	fmt.Printf("Заказ с id %d получен\n", req.OrderID)
 
 	orderStatus := OrderStatus{Status: "Принят в работу"}
 
@@ -44,6 +67,9 @@ func (s *server) Create(ctx context.Context, req *gRPCRestaurant.OrderDetails) (
 		OrderID: int32(orderStatus.ID),
 		Status:  orderStatus.Status,
 	}
+	go func() {
+		orderChannel <- &orderStatus
+	}()
 
 	return restaurantResponse, nil
 }
@@ -83,14 +109,17 @@ func main() {
 		log.Fatalf("Не удалось выполнить миграцию: %v", err)
 	}
 
-	// Создаем новый gRPC-сервер
+	orderChannel = make(chan *OrderStatus, 100)
+
+	for i := 1; i <= 3; i++ {
+		go worker(i, orderChannel)
+	}
+
 	grpcServer := grpc.NewServer()
 
-	// Регистрируем наш Calculator-сервис на gRPC-сервере
 	gRPCRestaurant.RegisterProcessCreaterServer(grpcServer, &server{})
 	reflection.Register(grpcServer)
 	log.Println("gRPC сервер запущен на порту :50050")
-	// Запускаем сервер
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}

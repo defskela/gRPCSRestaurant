@@ -18,21 +18,15 @@ import (
 	"gorm.io/gorm"
 )
 
-var db *gorm.DB
+var (
+	db               *gorm.DB
+	restaurantClient gRPCRestaurant.ProcessCreaterClient
+	restaurantConn   *grpc.ClientConn
+)
 
 type OrderDetails struct {
 	ID     uint           `gorm:"primaryKey"`
 	Dishes pq.StringArray `gorm:"type:text[]"`
-}
-
-func connectToRestaurantService() (gRPCRestaurant.ProcessCreaterClient, *grpc.ClientConn) {
-	conn, err := grpc.NewClient("localhost:50052", grpc.WithInsecure())
-	if err != nil {
-		log.Fatalf("Не удалось подключиться к RestaurantService: %v", err)
-	}
-
-	client := gRPCRestaurant.NewProcessCreaterClient(conn)
-	return client, conn
 }
 
 type server struct {
@@ -40,9 +34,6 @@ type server struct {
 }
 
 func (s *server) Create(ctx context.Context, req *gRPCOrder.OrderRequest) (*gRPCOrder.OrderResponse, error) {
-	for _, elem := range req.Dishes {
-		fmt.Println(elem)
-	}
 
 	orderDetails := &OrderDetails{
 		Dishes: req.Dishes,
@@ -54,8 +45,7 @@ func (s *server) Create(ctx context.Context, req *gRPCOrder.OrderRequest) (*gRPC
 
 	fmt.Printf("Присвоенный ID: %d\n", orderDetails.ID)
 
-	restaurantClient, conn := connectToRestaurantService()
-	defer conn.Close()
+	fmt.Println("CONNECT TO RESTAURANTSERVICE")
 
 	restaurantReq := &gRPCRestaurant.OrderDetails{
 		OrderID: int32(orderDetails.ID),
@@ -76,8 +66,6 @@ func (s *server) Create(ctx context.Context, req *gRPCOrder.OrderRequest) (*gRPC
 }
 
 func (s *server) Status(ctx context.Context, req *gRPCOrder.OrderID) (*gRPCOrder.OrderStatus, error) {
-	restaurantClient, conn := connectToRestaurantService()
-	defer conn.Close()
 
 	orderID := &gRPCRestaurant.OrderID{OrderID: req.OrderID}
 	ctxRestaurant, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -111,6 +99,14 @@ func main() {
 	if err := db.AutoMigrate(&OrderDetails{}); err != nil {
 		log.Fatalf("Не удалось выполнить миграцию: %v", err)
 	}
+
+	restaurantConn, err = grpc.NewClient("localhost:50052", grpc.WithInsecure())
+	if err != nil {
+		log.Fatalf("Не удалось подключиться к RestaurantService: %v", err)
+	}
+	defer restaurantConn.Close()
+
+	restaurantClient = gRPCRestaurant.NewProcessCreaterClient(restaurantConn)
 
 	grpcServer := grpc.NewServer()
 
